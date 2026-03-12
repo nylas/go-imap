@@ -54,7 +54,10 @@ func (c *Conn) handleLSub(dec *imapwire.Decoder) error {
 func (c *Conn) writeList(data *imap.ListData) error {
 	enc := newResponseEncoder(c)
 	defer enc.end()
+	return writeListData(enc.Encoder, data)
+}
 
+func writeListData(enc *imapwire.Encoder, data *imap.ListData) error {
 	enc.Atom("*").SP().Atom("LIST").SP()
 	enc.List(len(data.Attrs), func(i int) {
 		enc.MailboxAttr(data.Attrs[i])
@@ -206,7 +209,12 @@ func readListMailbox(dec *imapwire.Decoder) (string, error) {
 			return "", dec.Err()
 		}
 	}
-	return utf7.Decode(mailbox)
+
+	if dec.QuotedUTF8 {
+		return utf7.Unescape(mailbox)
+	} else {
+		return utf7.Decode(mailbox)
+	}
 }
 
 func isListChar(ch byte) bool {

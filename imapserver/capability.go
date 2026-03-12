@@ -93,7 +93,19 @@ func (c *Conn) availableCaps() []imap.Cap {
 			imap.CapCreateSpecialUse,
 			imap.CapLiteralPlus,
 			imap.CapUnauthenticate,
+			imap.CapCondStore,
+			imap.CapQResync,
+			imap.CapSort,
+			imap.CapSortDisplay,
+			imap.CapESort,
+			imap.CapID,
+			imap.CapQuota,
 		})
+
+		// THREAD capabilities use the format THREAD=ALGORITHM
+		for _, alg := range available.ThreadAlgorithms() {
+			caps = append(caps, imap.Cap("THREAD="+string(alg)))
+		}
 
 		if appendLimitSession, ok := c.session.(SessionAppendLimit); ok {
 			limit := appendLimitSession.AppendLimit()
