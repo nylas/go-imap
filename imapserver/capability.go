@@ -48,8 +48,8 @@ func (c *Conn) availableCaps() []imap.Cap {
 	if c.canStartTLS() {
 		caps = append(caps, imap.CapStartTLS)
 	}
-	if c.canCompress() {
-		caps = append(caps, imap.Cap("COMPRESS=DEFLATE"))
+	if available.Has(imap.CapCompressDeflate) && c.canCompress() {
+		caps = append(caps, imap.CapCompressDeflate)
 	}
 	if c.canAuth() {
 		mechs := []string{"PLAIN"}

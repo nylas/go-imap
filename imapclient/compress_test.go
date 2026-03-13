@@ -31,10 +31,11 @@ func newCompressClientServerPair(t *testing.T, initialState imap.ConnState) (*im
 		// No TLSConfig so canCompress() returns true on cleartext connections
 		InsecureAuth: true,
 		Caps: imap.CapSet{
-			imap.CapIMAP4rev1: {},
-			imap.CapIMAP4rev2: {},
-			imap.CapCondStore:  {},
-			imap.CapQResync:    {},
+			imap.CapIMAP4rev1:      {},
+			imap.CapIMAP4rev2:      {},
+			imap.CapCondStore:       {},
+			imap.CapQResync:         {},
+			imap.CapCompressDeflate: {},
 		},
 	})
 
@@ -99,8 +100,9 @@ func newCompressTLSClientServerPair(t *testing.T) (net.Conn, io.Closer) {
 		},
 		InsecureAuth: true,
 		Caps: imap.CapSet{
-			imap.CapIMAP4rev1: {},
-			imap.CapIMAP4rev2: {},
+			imap.CapIMAP4rev1:      {},
+			imap.CapIMAP4rev2:      {},
+			imap.CapCompressDeflate: {},
 		},
 	})
 

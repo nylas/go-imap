@@ -786,7 +786,7 @@ func (c *Client) readResponseTagged(tag, typ string) (startTLS *startTLSCommand,
 
 	if cmdErr == nil && code != "CAPABILITY" {
 		switch cmd.(type) {
-		case *startTLSCommand, *loginCommand, *authenticateCommand, *unauthenticateCommand:
+		case *startTLSCommand, *loginCommand, *authenticateCommand, *unauthenticateCommand, *compressCommand:
 			// These commands invalidate the capabilities
 			c.setCaps(nil)
 		}
