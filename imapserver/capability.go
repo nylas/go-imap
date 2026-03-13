@@ -48,6 +48,9 @@ func (c *Conn) availableCaps() []imap.Cap {
 	if c.canStartTLS() {
 		caps = append(caps, imap.CapStartTLS)
 	}
+	if available.Has(imap.CapCompressDeflate) && c.canCompress() {
+		caps = append(caps, imap.CapCompressDeflate)
+	}
 	if c.canAuth() {
 		mechs := []string{"PLAIN"}
 		if authSess, ok := c.session.(SessionSASL); ok {

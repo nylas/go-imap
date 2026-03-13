@@ -38,6 +38,7 @@ const (
 	CapAppendLimit      Cap = "APPENDLIMIT"        // RFC 7889
 	CapBinary           Cap = "BINARY"             // RFC 3516
 	CapCatenate         Cap = "CATENATE"           // RFC 4469
+	CapCompressDeflate  Cap = "COMPRESS=DEFLATE"   // RFC 4978
 	CapCondStore        Cap = "CONDSTORE"          // RFC 7162
 	CapConvert          Cap = "CONVERT"            // RFC 5259
 	CapCreateSpecialUse Cap = "CREATE-SPECIAL-USE" // RFC 6154
@@ -160,6 +161,19 @@ func (set CapSet) AuthMechanisms() []string {
 		}
 		mech := strings.TrimPrefix(string(c), "AUTH=")
 		l = append(l, mech)
+	}
+	return l
+}
+
+// CompressAlgorithms returns the list of supported compression algorithms.
+func (set CapSet) CompressAlgorithms() []string {
+	var l []string
+	for c := range set {
+		if !strings.HasPrefix(string(c), "COMPRESS=") {
+			continue
+		}
+		algo := strings.TrimPrefix(string(c), "COMPRESS=")
+		l = append(l, algo)
 	}
 	return l
 }
