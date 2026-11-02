@@ -676,7 +676,7 @@ func (c *Client) handleFetch(seqNum uint32) error {
 
 			envelope, err := readEnvelope(dec, &c.options)
 			if err != nil {
-				return fmt.Errorf("in envelope: %v", err)
+				return fmt.Errorf("in envelope: %w", err)
 			}
 
 			item = FetchItemDataEnvelope{Envelope: envelope}
@@ -712,7 +712,7 @@ func (c *Client) handleFetch(seqNum uint32) error {
 					var err error
 					section, err = readSectionSpec(dec)
 					if err != nil {
-						return fmt.Errorf("in section-spec: %v", err)
+						return fmt.Errorf("in section-spec: %w", err)
 					}
 				case "BINARY":
 					part, dot := readSectionPart(dec)
@@ -860,7 +860,7 @@ func readEnvelope(dec *imapwire.Decoder, options *Options) (*imap.Envelope, erro
 	for _, addrList := range addrLists {
 		l, err := readAddressList(dec, options)
 		if err != nil {
-			return nil, fmt.Errorf("in %v: %v", addrList.name, err)
+			return nil, fmt.Errorf("in %v: %w", addrList.name, err)
 		} else if !dec.ExpectSP() {
 			return nil, dec.Err()
 		}
@@ -906,7 +906,7 @@ func readAddress(dec *imapwire.Decoder, options *Options) (*imap.Address, error)
 		dec.ExpectNString(&addr.Mailbox) && dec.ExpectSP() &&
 		dec.ExpectNString(&addr.Host) && dec.ExpectSpecial(')')
 	if !ok {
-		return nil, fmt.Errorf("in address: %v", dec.Err())
+		return nil, fmt.Errorf("in address: %w", dec.Err())
 	}
 	// TODO: handle error
 	addr.Name, _ = options.decodeText(name)
@@ -944,7 +944,7 @@ func readBody(dec *imapwire.Decoder, options *Options) (imap.BodyStructure, erro
 		bs, err = readBodyTypeMpart(dec, options)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("in %v: %v", token, err)
+		return nil, fmt.Errorf("in %v: %w", token, err)
 	}
 
 	for dec.SP() {
@@ -1033,7 +1033,7 @@ func readBodyType1part(dec *imapwire.Decoder, typ string, options *Options) (*im
 	if hasSP {
 		bs.Extended, err = readBodyExt1part(dec, options)
 		if err != nil {
-			return nil, fmt.Errorf("in body-ext-1part: %v", err)
+			return nil, fmt.Errorf("in body-ext-1part: %w", err)
 		}
 	}
 
@@ -1055,7 +1055,7 @@ func readBodyExt1part(dec *imapwire.Decoder, options *Options) (*imap.BodyStruct
 	var err error
 	ext.Disposition, err = readBodyFldDsp(dec, options)
 	if err != nil {
-		return nil, fmt.Errorf("in body-fld-dsp: %v", err)
+		return nil, fmt.Errorf("in body-fld-dsp: %w", err)
 	}
 
 	if !dec.SP() {
@@ -1064,7 +1064,7 @@ func readBodyExt1part(dec *imapwire.Decoder, options *Options) (*imap.BodyStruct
 
 	ext.Language, err = readBodyFldLang(dec)
 	if err != nil {
-		return nil, fmt.Errorf("in body-fld-lang: %v", err)
+		return nil, fmt.Errorf("in body-fld-lang: %w", err)
 	}
 
 	if !dec.SP() {
@@ -1097,7 +1097,7 @@ func readBodyTypeMpart(dec *imapwire.Decoder, options *Options) (*imap.BodyStruc
 		var err error
 		bs.Extended, err = readBodyExtMpart(dec, options)
 		if err != nil {
-			return nil, fmt.Errorf("in body-ext-mpart: %v", err)
+			return nil, fmt.Errorf("in body-ext-mpart: %w", err)
 		}
 	}
 
@@ -1110,7 +1110,7 @@ func readBodyExtMpart(dec *imapwire.Decoder, options *Options) (*imap.BodyStruct
 	var err error
 	ext.Params, err = readBodyFldParam(dec, options)
 	if err != nil {
-		return nil, fmt.Errorf("in body-fld-param: %v", err)
+		return nil, fmt.Errorf("in body-fld-param: %w", err)
 	}
 
 	if !dec.SP() {
@@ -1119,7 +1119,7 @@ func readBodyExtMpart(dec *imapwire.Decoder, options *Options) (*imap.BodyStruct
 
 	ext.Disposition, err = readBodyFldDsp(dec, options)
 	if err != nil {
-		return nil, fmt.Errorf("in body-fld-dsp: %v", err)
+		return nil, fmt.Errorf("in body-fld-dsp: %w", err)
 	}
 
 	if !dec.SP() {
@@ -1128,7 +1128,7 @@ func readBodyExtMpart(dec *imapwire.Decoder, options *Options) (*imap.BodyStruct
 
 	ext.Language, err = readBodyFldLang(dec)
 	if err != nil {
-		return nil, fmt.Errorf("in body-fld-lang: %v", err)
+		return nil, fmt.Errorf("in body-fld-lang: %w", err)
 	}
 
 	if !dec.SP() {
@@ -1269,18 +1269,18 @@ func readSectionSpec(dec *imapwire.Decoder) (*imap.FetchItemBodySection, error) 
 		return nil, err
 	}
 	if offset != nil {
-		section.Partial = &imap.SectionPartial{Offset: int64(*offset)}
+		section.Partial = &imap.SectionPartial{Offset: *offset}
 	}
 
 	return &section, nil
 }
 
-func readPartialOffset(dec *imapwire.Decoder) (*uint32, error) {
+func readPartialOffset(dec *imapwire.Decoder) (*int64, error) {
 	if !dec.Special('<') {
 		return nil, nil
 	}
-	var offset uint32
-	if !dec.ExpectNumber(&offset) || !dec.ExpectSpecial('>') {
+	var offset int64
+	if !dec.ExpectNumber64(&offset) || !dec.ExpectSpecial('>') {
 		return nil, dec.Err()
 	}
 	return &offset, nil

@@ -56,4 +56,7 @@ type SelectData struct {
 	// QRESYNC extension
 	Vanished UIDSet
 	Modified []SelectModifiedData
+
+	// ReadOnly indicates that the mailbox is read-only.
+	ReadOnly bool
 }

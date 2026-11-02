@@ -55,6 +55,8 @@ type SelectedMailbox struct {
 	NumMessages    uint32
 	Flags          []imap.Flag
 	PermanentFlags []imap.Flag
+	// ReadOnly indicates that the mailbox is read-only.
+	ReadOnly bool
 }
 
 func (mbox *SelectedMailbox) copy() *SelectedMailbox {
@@ -518,6 +520,7 @@ func (c *Client) completeCommand(cmd command, err error) {
 				NumMessages:    cmd.data.NumMessages,
 				Flags:          cmd.data.Flags,
 				PermanentFlags: cmd.data.PermanentFlags,
+				ReadOnly:       cmd.data.ReadOnly,
 			}
 			c.mutex.Unlock()
 		}
@@ -608,20 +611,20 @@ func (c *Client) readResponse() error {
 
 	if c.dec.Special('+') {
 		if err := c.readContinueReq(); err != nil {
-			return fmt.Errorf("in continue-req: %v", err)
+			return fmt.Errorf("in continue-req: %w", err)
 		}
 		return nil
 	}
 
 	var tag, typ string
 	if !c.dec.Expect(c.dec.Special('*') || c.dec.Atom(&tag), "'*' or atom") {
-		return fmt.Errorf("in response: cannot read tag: %v", c.dec.Err())
+		return fmt.Errorf("in response: cannot read tag: %w", c.dec.Err())
 	}
 	if !c.dec.ExpectSP() {
-		return fmt.Errorf("in response: %v", c.dec.Err())
+		return fmt.Errorf("in response: %w", c.dec.Err())
 	}
 	if !c.dec.ExpectAtom(&typ) {
-		return fmt.Errorf("in response: cannot read type: %v", c.dec.Err())
+		return fmt.Errorf("in response: cannot read type: %w", c.dec.Err())
 	}
 
 	// Change typ to uppercase, as it's case-insensitive
@@ -641,11 +644,11 @@ func (c *Client) readResponse() error {
 		err = c.readResponseData(typ)
 	}
 	if err != nil {
-		return fmt.Errorf("in %v: %v", token, err)
+		return fmt.Errorf("in %v: %w", token, err)
 	}
 
 	if !c.dec.ExpectCRLF() {
-		return fmt.Errorf("in response: %v", c.dec.Err())
+		return fmt.Errorf("in response: %w", c.dec.Err())
 	}
 
 	if startTLS != nil {
@@ -704,23 +707,31 @@ func (c *Client) readResponseTagged(tag, typ string) (startTLS *startTLSCommand,
 	var code string
 	if hasSP && c.dec.Special('[') { // resp-text-code
 		if !c.dec.ExpectAtom(&code) {
-			return nil, nil, fmt.Errorf("in resp-text-code: %v", c.dec.Err())
+			return nil, nil, fmt.Errorf("in resp-text-code: %w", c.dec.Err())
 		}
 		// TODO: LONGENTRIES and MAXSIZE from METADATA
 		switch code {
 		case "CAPABILITY": // capability-data
 			caps, err := readCapabilities(c.dec)
 			if err != nil {
-				return nil, nil, fmt.Errorf("in capability-data: %v", err)
+				return nil, nil, fmt.Errorf("in capability-data: %w", err)
 			}
 			c.setCaps(caps)
+		case "READ-ONLY": // select
+			if cmd, ok := cmd.(*SelectCommand); ok {
+				cmd.data.ReadOnly = true
+			}
+		case "READ-WRITE": // select
+			if cmd, ok := cmd.(*SelectCommand); ok {
+				cmd.data.ReadOnly = false
+			}
 		case "APPENDUID":
 			var (
 				uidValidity uint32
 				uid         imap.UID
 			)
 			if !c.dec.ExpectSP() || !c.dec.ExpectNumber(&uidValidity) || !c.dec.ExpectSP() || !c.dec.ExpectUID(&uid) {
-				return nil, nil, fmt.Errorf("in resp-code-apnd: %v", c.dec.Err())
+				return nil, nil, fmt.Errorf("in resp-code-apnd: %w", c.dec.Err())
 			}
 			if cmd, ok := cmd.(*AppendCommand); ok {
 				cmd.data.UID = uid
@@ -732,7 +743,7 @@ func (c *Client) readResponseTagged(tag, typ string) (startTLS *startTLSCommand,
 			}
 			uidValidity, srcUIDs, dstUIDs, err := readRespCodeCopyUID(c.dec)
 			if err != nil {
-				return nil, nil, fmt.Errorf("in resp-code-copy: %v", err)
+				return nil, nil, fmt.Errorf("in resp-code-copy: %w", err)
 			}
 			switch cmd := cmd.(type) {
 			case *CopyCommand:
@@ -752,13 +763,13 @@ func (c *Client) readResponseTagged(tag, typ string) (startTLS *startTLSCommand,
 			}
 		}
 		if !c.dec.ExpectSpecial(']') {
-			return nil, nil, fmt.Errorf("in resp-text: %v", c.dec.Err())
+			return nil, nil, fmt.Errorf("in resp-text: %w", c.dec.Err())
 		}
 		hasSP = c.dec.SP()
 	}
 	var text string
 	if hasSP && !c.dec.ExpectText(&text) {
-		return nil, nil, fmt.Errorf("in resp-text: %v", c.dec.Err())
+		return nil, nil, fmt.Errorf("in resp-text: %w", c.dec.Err())
 	}
 
 	var cmdErr error
@@ -820,13 +831,13 @@ func (c *Client) readResponseData(typ string) error {
 		var code string
 		if hasSP && c.dec.Special('[') { // resp-text-code
 			if !c.dec.ExpectAtom(&code) {
-				return fmt.Errorf("in resp-text-code: %v", c.dec.Err())
+				return fmt.Errorf("in resp-text-code: %w", c.dec.Err())
 			}
 			switch code {
 			case "CAPABILITY": // capability-data
 				caps, err := readCapabilities(c.dec)
 				if err != nil {
-					return fmt.Errorf("in capability-data: %v", err)
+					return fmt.Errorf("in capability-data: %w", err)
 				}
 				c.setCaps(caps)
 			case "PERMANENTFLAGS":
@@ -872,7 +883,7 @@ func (c *Client) readResponseData(typ string) error {
 				}
 				uidValidity, srcUIDs, dstUIDs, err := readRespCodeCopyUID(c.dec)
 				if err != nil {
-					return fmt.Errorf("in resp-code-copy: %v", err)
+					return fmt.Errorf("in resp-code-copy: %w", err)
 				}
 				if cmd := findPendingCmdByType[*MoveCommand](c); cmd != nil {
 					cmd.data.UIDValidity = uidValidity
@@ -899,14 +910,14 @@ func (c *Client) readResponseData(typ string) error {
 				}
 			}
 			if !c.dec.ExpectSpecial(']') {
-				return fmt.Errorf("in resp-text: %v", c.dec.Err())
+				return fmt.Errorf("in resp-text: %w", c.dec.Err())
 			}
 			hasSP = c.dec.SP()
 		}
 
 		var text string
 		if hasSP && !c.dec.ExpectText(&text) {
-			return fmt.Errorf("in resp-text: %v", c.dec.Err())
+			return fmt.Errorf("in resp-text: %w", c.dec.Err())
 		}
 
 		if code == "CLOSED" {
@@ -1044,7 +1055,7 @@ func (c *Client) WaitGreeting() error {
 		return c.greetingErr
 	case <-c.decCh:
 		if c.decErr != nil {
-			return fmt.Errorf("got error before greeting: %v", c.decErr)
+			return fmt.Errorf("got error before greeting: %w", c.decErr)
 		}
 		return fmt.Errorf("connection closed before greeting")
 	}

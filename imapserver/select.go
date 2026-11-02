@@ -179,7 +179,11 @@ func (c *Conn) handleSelect(tag string, dec *imapwire.Decoder, readOnly bool) er
 		code = "READ-ONLY"
 	} else {
 		cmdName = "SELECT"
-		code = "READ-WRITE"
+		if data.ReadOnly {
+			code = "READ-ONLY"
+		} else {
+			code = "READ-WRITE"
+		}
 	}
 	return writeStatusResp(enc.Encoder, tag, &imap.StatusResponse{
 		Type: imap.StatusResponseTypeOK,

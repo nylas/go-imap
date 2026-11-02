@@ -527,10 +527,13 @@ func (dec *Decoder) ExpectMailbox(ptr *string) bool {
 	} else {
 		name, err = utf7.Decode(name)
 	}
-	if err == nil {
-		*ptr = name
+	if err != nil {
+		return dec.returnErr(&DecoderExpectError{
+			Message: fmt.Sprintf("invalid mailbox name: %v", err),
+		})
 	}
-	return dec.returnErr(err)
+	*ptr = name
+	return true
 }
 
 func (dec *Decoder) ExpectUID(ptr *imap.UID) bool {
@@ -554,7 +557,9 @@ func (dec *Decoder) ExpectNumSet(kind NumKind, ptr *imap.NumSet) bool {
 	}
 	numSet, err := imapnum.ParseSet(s)
 	if err != nil {
-		return dec.returnErr(err)
+		return dec.returnErr(&DecoderExpectError{
+			Message: fmt.Sprintf("invalid sequence-set: %v", err),
+		})
 	}
 
 	switch kind {
