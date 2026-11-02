@@ -834,8 +834,12 @@ func isMsgAttNameChar(ch byte) bool {
 func readEnvelope(dec *imapwire.Decoder, options *Options) (*imap.Envelope, error) {
 	var envelope imap.Envelope
 
-	if !dec.ExpectSpecial('(') {
-		return nil, dec.Err()
+	// Some servers send NIL instead of an envelope
+	if !dec.Special('(') {
+		if !dec.ExpectNIL() {
+			return nil, dec.Err()
+		}
+		return nil, nil
 	}
 
 	var date, subject string
@@ -875,6 +879,8 @@ func readEnvelope(dec *imapwire.Decoder, options *Options) (*imap.Envelope, erro
 	envelope.InReplyTo, _ = parseMsgIDList(inReplyTo)
 	envelope.MessageID, _ = parseMsgID(messageID)
 
+	for dec.Special(' ') {
+	}
 	if !dec.ExpectSpecial(')') {
 		return nil, dec.Err()
 	}
@@ -884,6 +890,15 @@ func readEnvelope(dec *imapwire.Decoder, options *Options) (*imap.Envelope, erro
 func readAddressList(dec *imapwire.Decoder, options *Options) ([]imap.Address, error) {
 	var l []imap.Address
 	err := dec.ExpectNList(func() error {
+		// Some servers send NIL inside an address list
+		var nilAtom string
+		if dec.Atom(&nilAtom) {
+			if !dec.Expect(nilAtom == "NIL", "NIL") {
+				return dec.Err()
+			}
+			return nil
+		}
+
 		addr, err := readAddress(dec, options)
 		if err != nil {
 			return err
