@@ -855,8 +855,9 @@ func (c *Client) readResponseData(typ string) error {
 					handler(&UnilateralDataMailbox{PermanentFlags: flags})
 				}
 			case "UIDNEXT":
+				// imap.postoffice.net sends an empty number: "[UIDNEXT ]"
 				var uidNext imap.UID
-				if !c.dec.ExpectSP() || !c.dec.ExpectUID(&uidNext) {
+				if !c.dec.ExpectSP() || !c.dec.PeekSpecial(']') && !c.dec.ExpectUID(&uidNext) {
 					return c.dec.Err()
 				}
 				if cmd := findPendingCmdByType[*SelectCommand](c); cmd != nil {
@@ -864,7 +865,7 @@ func (c *Client) readResponseData(typ string) error {
 				}
 			case "UIDVALIDITY":
 				var uidValidity uint32
-				if !c.dec.ExpectSP() || !c.dec.ExpectNumber(&uidValidity) {
+				if !c.dec.ExpectSP() || !c.dec.PeekSpecial(']') && !c.dec.ExpectNumber(&uidValidity) {
 					return c.dec.Err()
 				}
 				if cmd := findPendingCmdByType[*SelectCommand](c); cmd != nil {

@@ -646,7 +646,10 @@ func (c *Client) handleFetch(seqNum uint32) error {
 	defer handleMsg()
 
 	numAtts := 0
-	return dec.ExpectList(func() error {
+	emptyLiteral := false
+	readItem := func() error {
+		emptyLiteral = false
+
 		var attName string
 		if !dec.Expect(dec.Func(&attName, isMsgAttNameChar), "msg-att name") {
 			return dec.Err()
@@ -741,6 +744,7 @@ func (c *Client) handleFetch(seqNum uint32) error {
 
 				var fetchLit imap.LiteralReader
 				if lit != nil {
+					emptyLiteral = lit.Size() == 0
 					done = make(chan struct{})
 					fetchLit = &fetchLiteralReader{
 						LiteralReader: lit,
@@ -824,7 +828,29 @@ func (c *Client) handleFetch(seqNum uint32) error {
 			c.setReadTimeout(respReadTimeout)
 		}
 		return nil
-	})
+	}
+
+	// Not using ExpectList: Open-Xchange omits the SP after an empty literal,
+	// e.g. "BODY[HEADER.FIELDS (REFERENCES)] {0}\r\nUID 42"
+	if !dec.ExpectSpecial('(') {
+		return dec.Err()
+	}
+	for {
+		for dec.Special(' ') {
+		}
+		if dec.Special(')') {
+			return nil
+		}
+		if err := readItem(); err != nil {
+			return err
+		}
+		if dec.Special(')') {
+			return nil
+		}
+		if !dec.SP() && !dec.Expect(emptyLiteral, "SP") {
+			return dec.Err()
+		}
+	}
 }
 
 func isMsgAttNameChar(ch byte) bool {
@@ -947,6 +973,7 @@ func readBody(dec *imapwire.Decoder, options *Options) (imap.BodyStructure, erro
 
 	var (
 		mediaType string
+		nilAtom   string
 		token     string
 		bs        imap.BodyStructure
 		err       error
@@ -954,6 +981,13 @@ func readBody(dec *imapwire.Decoder, options *Options) (imap.BodyStructure, erro
 	if dec.String(&mediaType) {
 		token = "body-type-1part"
 		bs, err = readBodyType1part(dec, mediaType, options)
+	} else if dec.Atom(&nilAtom) {
+		// QQ Mail sends NIL instead of a media type
+		if !dec.Expect(nilAtom == "NIL", "NIL") {
+			return nil, dec.Err()
+		}
+		token = "body-type-1part"
+		bs, err = readBodyType1part(dec, "", options)
 	} else {
 		token = "body-type-mpart"
 		bs, err = readBodyTypeMpart(dec, options)
@@ -978,7 +1012,7 @@ func readBody(dec *imapwire.Decoder, options *Options) (imap.BodyStructure, erro
 func readBodyType1part(dec *imapwire.Decoder, typ string, options *Options) (*imap.BodyStructureSinglePart, error) {
 	bs := imap.BodyStructureSinglePart{Type: typ}
 
-	if !dec.ExpectSP() || !dec.ExpectString(&bs.Subtype) || !dec.ExpectSP() {
+	if !dec.ExpectSP() || !dec.ExpectNString(&bs.Subtype) || !dec.ExpectSP() {
 		return nil, dec.Err()
 	}
 	var err error
@@ -1008,7 +1042,9 @@ func readBodyType1part(dec *imapwire.Decoder, typ string, options *Options) (*im
 		return &bs, nil
 	}
 
-	if strings.EqualFold(bs.Type, "message") && (strings.EqualFold(bs.Subtype, "rfc822") || strings.EqualFold(bs.Subtype, "global")) {
+	// Dovecot omits the envelope, body and lines for message/global, which
+	// RFC 3501 doesn't define as a message type
+	if strings.EqualFold(bs.Type, "message") && (strings.EqualFold(bs.Subtype, "rfc822") || strings.EqualFold(bs.Subtype, "global") && dec.PeekSpecial('(')) {
 		var msg imap.BodyStructureMessageRFC822
 
 		msg.Envelope, err = readEnvelope(dec, options)
