@@ -479,23 +479,7 @@ func findPendingCmdByType[T command](c *Client) T {
 }
 
 func (c *Client) completeCommand(cmd command, err error) {
-	done := cmd.base().done
-	done <- err
-	close(done)
-
-	// Ensure the command is not blocked waiting on continuation requests
-	c.mutex.Lock()
-	var filtered []continuationRequest
-	for _, contReq := range c.contReqs {
-		if contReq.cmd != cmd.base() {
-			filtered = append(filtered, contReq)
-		} else {
-			contReq.Cancel(err)
-		}
-	}
-	c.contReqs = filtered
-	c.mutex.Unlock()
-
+	// Update the state before unblocking Wait, so callers see it when it returns
 	switch cmd := cmd.(type) {
 	case *authenticateCommand, *loginCommand:
 		if err == nil {
@@ -529,6 +513,26 @@ func (c *Client) completeCommand(cmd command, err error) {
 		if err == nil {
 			c.setState(imap.ConnStateLogout)
 		}
+	}
+
+	done := cmd.base().done
+	done <- err
+	close(done)
+
+	// Ensure the command is not blocked waiting on continuation requests
+	c.mutex.Lock()
+	var filtered []continuationRequest
+	for _, contReq := range c.contReqs {
+		if contReq.cmd != cmd.base() {
+			filtered = append(filtered, contReq)
+		} else {
+			contReq.Cancel(err)
+		}
+	}
+	c.contReqs = filtered
+	c.mutex.Unlock()
+
+	switch cmd := cmd.(type) {
 	case *ListCommand:
 		if cmd.pendingData != nil {
 			cmd.mailboxes <- cmd.pendingData
@@ -851,8 +855,9 @@ func (c *Client) readResponseData(typ string) error {
 					handler(&UnilateralDataMailbox{PermanentFlags: flags})
 				}
 			case "UIDNEXT":
+				// imap.postoffice.net sends an empty number: "[UIDNEXT ]"
 				var uidNext imap.UID
-				if !c.dec.ExpectSP() || !c.dec.ExpectUID(&uidNext) {
+				if !c.dec.ExpectSP() || !c.dec.PeekSpecial(']') && !c.dec.ExpectUID(&uidNext) {
 					return c.dec.Err()
 				}
 				if cmd := findPendingCmdByType[*SelectCommand](c); cmd != nil {
@@ -860,7 +865,7 @@ func (c *Client) readResponseData(typ string) error {
 				}
 			case "UIDVALIDITY":
 				var uidValidity uint32
-				if !c.dec.ExpectSP() || !c.dec.ExpectNumber(&uidValidity) {
+				if !c.dec.ExpectSP() || !c.dec.PeekSpecial(']') && !c.dec.ExpectNumber(&uidValidity) {
 					return c.dec.Err()
 				}
 				if cmd := findPendingCmdByType[*SelectCommand](c); cmd != nil {

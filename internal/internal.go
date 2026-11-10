@@ -82,14 +82,19 @@ func ExpectFlag(dec *imapwire.Decoder) (imap.Flag, error) {
 	if isSystem && dec.Special('*') {
 		return imap.FlagWildcard, nil // flag-perm
 	}
+	// Gmail lists keywords containing "]"
 	var name string
-	if !dec.ExpectAtom(&name) {
+	if !dec.Expect(dec.Func(&name, isFlagChar), "flag") {
 		return "", fmt.Errorf("in flag: %w", dec.Err())
 	}
 	if isSystem {
 		name = "\\" + name
 	}
 	return canonicalFlag(name), nil
+}
+
+func isFlagChar(ch byte) bool {
+	return imapwire.IsAtomChar(ch) || ch == ']'
 }
 
 func ExpectMailboxAttrList(dec *imapwire.Decoder) ([]imap.MailboxAttr, error) {

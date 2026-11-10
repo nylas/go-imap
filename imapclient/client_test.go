@@ -1,10 +1,12 @@
 package imapclient_test
 
 import (
+	"bufio"
 	"crypto/tls"
 	"io"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -124,6 +126,29 @@ func newMemClientServerPair(t *testing.T) (net.Conn, io.Closer) {
 	}
 
 	return conn, server
+}
+
+// newScriptedClient returns a client connected to a fake server which answers
+// the first command with resp, after replacing "TAG" with the command's tag.
+func newScriptedClient(t *testing.T, resp string) *imapclient.Client {
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() { serverConn.Close() })
+
+	go func() {
+		io.WriteString(serverConn, "* PREAUTH ready\r\n")
+		r := bufio.NewReader(serverConn)
+		line, err := r.ReadString('\n')
+		if err != nil {
+			return
+		}
+		tag, _, _ := strings.Cut(line, " ")
+		io.WriteString(serverConn, strings.ReplaceAll(resp, "TAG", tag))
+		io.Copy(io.Discard, r)
+	}()
+
+	client := imapclient.New(clientConn, nil)
+	t.Cleanup(func() { client.Close() })
+	return client
 }
 
 func newClientServerPair(t *testing.T, initialState imap.ConnState) (*imapclient.Client, io.Closer) {
@@ -290,5 +315,23 @@ func TestWaitGreeting_eof(t *testing.T) {
 
 	if err := client.WaitGreeting(); err == nil {
 		t.Fatalf("WaitGreeting() should fail")
+	}
+}
+
+func TestWaitGreeting_capabilityTrailingSP(t *testing.T) {
+	// bad server: trailing SP before the "]" closing the CAPABILITY resp-text-code
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	client := imapclient.New(clientConn, nil)
+	defer client.Close()
+
+	go serverConn.Write([]byte("* OK [CAPABILITY IMAP4rev1 IDLE ] Service ready\r\n"))
+
+	if err := client.WaitGreeting(); err != nil {
+		t.Fatalf("WaitGreeting() = %v", err)
+	}
+	if !client.Caps().Has(imap.CapIdle) {
+		t.Errorf("Caps() = %v, want IDLE", client.Caps())
 	}
 }
