@@ -153,9 +153,7 @@ func (enc *Encoder) Mailbox(name string) *Encoder {
 	if strings.EqualFold(name, "INBOX") {
 		return enc.Atom("INBOX")
 	} else {
-		if enc.QuotedUTF8 {
-			name = utf7.Escape(name)
-		} else {
+		if !enc.QuotedUTF8 {
 			name = utf7.Encode(name)
 		}
 		return enc.String(name)

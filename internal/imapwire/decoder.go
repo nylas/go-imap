@@ -2,11 +2,13 @@ package imapwire
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/internal/imapnum"
@@ -541,7 +543,9 @@ func (dec *Decoder) ExpectMailbox(ptr *string) bool {
 
 	var err error
 	if dec.QuotedUTF8 {
-		name, err = utf7.Unescape(name)
+		if !utf8.ValidString(name) {
+			err = errors.New("invalid UTF-8")
+		}
 	} else {
 		name, err = utf7.Decode(name)
 	}
