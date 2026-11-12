@@ -54,4 +54,8 @@ func TestCreate(t *testing.T) {
 	t.Run("ampersand_utf8", func(t *testing.T) {
 		testCreate(t, "Angus & Julia", true)
 	})
+	// "&-" is the UTF-7 escape for '&', but raw UTF-8 names must keep it as-is
+	t.Run("ampersand_dash", func(t *testing.T) {
+		testCreate(t, "R&-D", false)
+	})
 }

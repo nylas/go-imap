@@ -1,8 +1,10 @@
 package imapserver
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/internal/imapwire"
@@ -211,7 +213,10 @@ func readListMailbox(dec *imapwire.Decoder) (string, error) {
 	}
 
 	if dec.QuotedUTF8 {
-		return utf7.Unescape(mailbox)
+		if !utf8.ValidString(mailbox) {
+			return "", errors.New("invalid UTF-8")
+		}
+		return mailbox, nil
 	} else {
 		return utf7.Decode(mailbox)
 	}
