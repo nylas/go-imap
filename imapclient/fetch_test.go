@@ -2,6 +2,7 @@ package imapclient_test
 
 import (
 	"bufio"
+	"errors"
 	"net"
 	"strings"
 	"testing"
@@ -91,6 +92,38 @@ func TestFetch_emptyLiteralMissingSP(t *testing.T) {
 		} else if len(msgs) != 1 || msgs[0].UID != 42 {
 			t.Errorf("Fetch(%q) = %v, want UID 42", resp, msgs)
 		}
+	}
+}
+
+func TestFetch_taggedStatusInsideFetchResponse(t *testing.T) {
+	// Some servers stop writing a FETCH response mid-line and write the
+	// tagged status right after the last attribute, without ")" CRLF.
+	options := &imap.FetchOptions{
+		UID:         true,
+		Flags:       true,
+		BodySection: []*imap.FetchItemBodySection{{Specifier: imap.PartSpecifierHeader, HeaderFields: []string{"Message-Id"}, Peek: true}},
+	}
+
+	client := newScriptedClient(t, "* 1 FETCH (UID 7 FLAGS (\\Seen))\r\n* 2 FETCH (UID 8 FLAGS (\\Seen) TAG OK FETCH completed\r\n")
+	msgs, err := client.Fetch(imap.SeqSetNum(1, 2), options).Collect()
+	if err != nil {
+		t.Fatalf("Fetch() = %v", err)
+	}
+	if len(msgs) != 2 || msgs[0].UID != 7 || msgs[1].UID != 8 {
+		t.Errorf("Fetch() = %v, want UIDs 7 and 8", msgs)
+	}
+
+	client = newScriptedClient(t, "* 1 FETCH (UID 7 FLAGS (\\Seen) TAG no [SERVERBUG] Cannot read message\r\n")
+	_, err = client.Fetch(imap.SeqSetNum(1), options).Collect()
+	var imapErr *imap.Error
+	if !errors.As(err, &imapErr) || imapErr.Type != imap.StatusResponseTypeNo || imapErr.Text != "Cannot read message" {
+		t.Errorf("Fetch() = %v, want the server's NO status", err)
+	}
+
+	client = newScriptedClient(t, "* 1 FETCH (UID 7 X-UNKNOWN 1)\r\nTAG OK FETCH completed\r\n")
+	_, err = client.Fetch(imap.SeqSetNum(1), options).Collect()
+	if err == nil || !strings.Contains(err.Error(), `unsupported msg-att name: "X-UNKNOWN"`) {
+		t.Errorf("Fetch() = %v, want an unsupported msg-att error", err)
 	}
 }
 

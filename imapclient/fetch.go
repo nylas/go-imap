@@ -650,11 +650,11 @@ func (c *Client) handleFetch(seqNum uint32) error {
 	readItem := func() error {
 		emptyLiteral = false
 
-		var attName string
-		if !dec.Expect(dec.Func(&attName, isMsgAttNameChar), "msg-att name") {
+		var rawName string
+		if !dec.Expect(dec.Func(&rawName, isMsgAttNameChar), "msg-att name") {
 			return dec.Err()
 		}
-		attName = strings.ToUpper(attName)
+		attName := strings.ToUpper(rawName)
 
 		var (
 			item FetchItemData
@@ -809,6 +809,9 @@ func (c *Client) handleFetch(seqNum uint32) error {
 			}
 			item = FetchItemDataModSeq{ModSeq: modSeq}
 		default:
+			if c.findPendingCmdFunc(func(cmd command) bool { return cmd.base().tag == rawName }) != nil {
+				return &taggedRespInFetchError{tag: rawName}
+			}
 			return fmt.Errorf("unsupported msg-att name: %q", attName)
 		}
 
@@ -851,6 +854,16 @@ func (c *Client) handleFetch(seqNum uint32) error {
 			return dec.Err()
 		}
 	}
+}
+
+// taggedRespInFetchError reports a tagged status response written in place of
+// the next msg-att, after the server stopped a FETCH response mid-line.
+type taggedRespInFetchError struct {
+	tag string
+}
+
+func (err *taggedRespInFetchError) Error() string {
+	return fmt.Sprintf("tagged response %q inside FETCH response", err.tag)
 }
 
 func isMsgAttNameChar(ch byte) bool {
