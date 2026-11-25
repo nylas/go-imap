@@ -643,6 +643,16 @@ func (c *Client) readResponse() error {
 	} else {
 		token = "response-data"
 		err = c.readResponseData(typ)
+
+		var inFetch *taggedRespInFetchError
+		if errors.As(err, &inFetch) {
+			token = "response-tagged"
+			if !c.dec.ExpectSP() || !c.dec.ExpectAtom(&typ) {
+				err = c.dec.Err()
+			} else {
+				startTLS, compress, err = c.readResponseTagged(inFetch.tag, strings.ToUpper(typ))
+			}
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("in %v: %v", token, err)
